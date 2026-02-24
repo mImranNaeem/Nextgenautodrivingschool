@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Instagram, Facebook, MessageCircle, Phone, Mail, MapPin, CheckCircle2, Star, ChevronRight, ChevronLeft, Car } from 'lucide-react';
+import { Instagram, Facebook, MessageCircle, Phone, Mail, MapPin, CheckCircle2, Star, ChevronRight, ChevronLeft, Car, Globe, Loader2 } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
 
 // --- Components ---
 
@@ -32,12 +33,65 @@ const Navbar = () => {
 
 const Hero = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
-
-  const images = [
+  const [images, setImages] = useState<string[]>([
     "https://picsum.photos/seed/driving/800/600",
     "https://picsum.photos/seed/speed/800/600",
     "https://picsum.photos/seed/instructor/800/600"
-  ];
+  ]);
+  const [isGenerating, setIsGenerating] = useState(true);
+
+  useEffect(() => {
+    const generateImages = async () => {
+      try {
+        const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
+        const model = "gemini-2.5-flash-image";
+        
+        const prompts = [
+          "A professional photograph of a silver 2011 Lexus CT200h hatchback driving school car. The car has 'Next Gen Driving school' signs on the doors and a roof sign. Parked on a clean suburban street, 4:3 aspect ratio, high resolution.",
+          "Close up of a silver 2011 Lexus hatchback with 'Next Gen Driving school' driving school branding. Professional automotive photography, daylight.",
+          "A silver 2011 Lexus hatchback driving on a road with 'Next Gen Driving school' driving school decals visible. Realistic, high quality."
+        ];
+
+        const generatedImages: string[] = [];
+
+        // Generate images in parallel
+        const requests = prompts.map(prompt => 
+          ai.models.generateContent({
+            model: model,
+            contents: [{ parts: [{ text: prompt }] }],
+            config: {
+              imageConfig: {
+                aspectRatio: "4:3"
+              }
+            }
+          })
+        );
+
+        const responses = await Promise.all(requests);
+
+        responses.forEach(response => {
+          const parts = response.candidates?.[0]?.content?.parts;
+          if (parts) {
+            for (const part of parts) {
+              if (part.inlineData) {
+                generatedImages.push(`data:image/png;base64,${part.inlineData.data}`);
+              }
+            }
+          }
+        });
+
+        if (generatedImages.length > 0) {
+          setImages(generatedImages);
+        }
+      } catch (error) {
+        console.error("Failed to generate images:", error);
+      } finally {
+        setIsGenerating(false);
+      }
+    };
+
+    generateImages();
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -91,31 +145,45 @@ const Hero = () => {
           
           {/* Image Carousel */}
           <div className="relative mt-12 lg:mt-0">
-            <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white aspect-[4/3]">
+            <div className="relative rounded-3xl overflow-hidden shadow-2xl border-4 border-white aspect-[4/3] bg-brand-dark/5">
               <AnimatePresence mode="wait">
-                <motion.img 
-                  key={currentSlide}
-                  src={images[currentSlide]} 
-                  alt="Driving Lesson" 
-                  initial={{ opacity: 0, scale: 1.1 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  transition={{ duration: 0.8 }}
-                  className="w-full h-full object-cover absolute inset-0"
-                  referrerPolicy="no-referrer"
-                />
+                {isGenerating ? (
+                  <motion.div 
+                    key="loader"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="absolute inset-0 flex flex-col items-center justify-center gap-4 bg-panel"
+                  >
+                    <Loader2 className="w-12 h-12 text-secondary animate-spin" />
+                    <p className="text-brand-dark/60 font-medium">Preparing your custom car photos...</p>
+                  </motion.div>
+                ) : (
+                  <motion.img 
+                    key={currentSlide}
+                    src={images[currentSlide]} 
+                    alt="Driving Lesson" 
+                    initial={{ opacity: 0, scale: 1.1 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    transition={{ duration: 0.8 }}
+                    className="w-full h-full object-cover absolute inset-0"
+                    referrerPolicy="no-referrer"
+                  />
+                )}
               </AnimatePresence>
               <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent pointer-events-none"></div>
-              
-              <div className="absolute bottom-8 left-8 right-8 bg-white/80 backdrop-blur-md p-6 rounded-2xl border border-white/20 shadow-lg z-10">
-                <div className="flex items-center gap-4">
-                  <div className="bg-secondary p-3 rounded-full">
-                    <CheckCircle2 className="text-brand-dark" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-lg text-brand-dark">DVSA Approved</h3>
-                    <p className="text-sm text-brand-dark/70">Fully certified professional instructors</p>
-                  </div>
+            </div>
+
+            {/* DVSA Approved Banner - Now Underneath */}
+            <div className="mt-6 bg-white/60 backdrop-blur-sm p-4 md:p-5 rounded-2xl border border-brand-dark/5 shadow-md">
+              <div className="flex items-center gap-3 md:gap-4">
+                <div className="bg-secondary p-2 md:p-3 rounded-full shrink-0">
+                  <CheckCircle2 className="text-brand-dark w-5 h-5 md:w-6 md:h-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-base md:text-lg text-brand-dark">DVSA Approved</h3>
+                  <p className="text-xs md:text-sm text-brand-dark/70">Fully certified professional instructors</p>
                 </div>
               </div>
             </div>
@@ -194,6 +262,50 @@ const Services = () => {
   );
 };
 
+const FloatingSocials = () => {
+  const socials = [
+    { 
+      icon: <Instagram size={20} />, 
+      href: "https://www.instagram.com/nextgenautodrivingschool/", 
+      color: "bg-[#E4405F]",
+      label: "Instagram"
+    },
+    { 
+      icon: <Facebook size={20} />, 
+      href: "https://www.facebook.com/photo/?fbid=122104166253228381&set=a.122104057371228381", 
+      color: "bg-[#1877F2]",
+      label: "Facebook"
+    },
+    { 
+      icon: <MessageCircle size={20} />, 
+      href: "https://wa.me/447547460088", 
+      color: "bg-[#25D366]",
+      label: "WhatsApp"
+    },
+  ];
+
+  return (
+    <div className="fixed left-0 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-2 p-2">
+      {socials.map((social, idx) => (
+        <motion.a
+          key={idx}
+          href={social.href}
+          target="_blank"
+          rel="noopener noreferrer"
+          initial={{ x: -50, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: 0.5 + idx * 0.1 }}
+          whileHover={{ x: 5, scale: 1.1 }}
+          className={`${social.color} text-white p-3 rounded-r-xl shadow-lg flex items-center justify-center transition-transform`}
+          title={social.label}
+        >
+          {social.icon}
+        </motion.a>
+      ))}
+    </div>
+  );
+};
+
 const Socials = () => {
   return (
     <section className="py-12 bg-panel text-brand-dark">
@@ -204,13 +316,13 @@ const Socials = () => {
             <p className="text-brand-dark/70">Follow us for driving tips, success stories, and updates.</p>
           </div>
           <div className="flex gap-4">
-            <a href="https://www.instagram.com/nextgenautodrivingschool/" target="_blank" rel="noopener noreferrer" className="w-14 h-14 rounded-full bg-brand-dark/10 flex items-center justify-center hover:bg-secondary hover:text-brand-dark transition-all">
+            <a href="https://www.instagram.com/nextgenautodrivingschool/" target="_blank" rel="noopener noreferrer" className="w-14 h-14 rounded-full bg-[#E4405F] flex items-center justify-center text-white hover:scale-110 transition-all shadow-lg">
               <Instagram size={24} />
             </a>
-            <a href="https://www.facebook.com/photo/?fbid=122104166253228381&set=a.122104057371228381" target="_blank" rel="noopener noreferrer" className="w-14 h-14 rounded-full bg-brand-dark/10 flex items-center justify-center hover:bg-secondary hover:text-brand-dark transition-all">
+            <a href="https://www.facebook.com/photo/?fbid=122104166253228381&set=a.122104057371228381" target="_blank" rel="noopener noreferrer" className="w-14 h-14 rounded-full bg-[#1877F2] flex items-center justify-center text-white hover:scale-110 transition-all shadow-lg">
               <Facebook size={24} />
             </a>
-            <a href="https://wa.me/447547460088" target="_blank" rel="noopener noreferrer" className="w-14 h-14 rounded-full bg-brand-dark/10 flex items-center justify-center hover:bg-secondary hover:text-brand-dark transition-all">
+            <a href="https://wa.me/447547460088" target="_blank" rel="noopener noreferrer" className="w-14 h-14 rounded-full bg-[#25D366] flex items-center justify-center text-white hover:scale-110 transition-all shadow-lg">
               <MessageCircle size={24} />
             </a>
           </div>
@@ -237,17 +349,21 @@ const Contact = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
+      
       const result = await res.json();
-      if (result.success) {
+      
+      if (res.ok && result.success) {
         setStatus('success');
         setMessage(result.message);
         (e.target as HTMLFormElement).reset();
       } else {
-        throw new Error();
+        setStatus('error');
+        setMessage(result.message || 'Something went wrong. Please try again later.');
       }
     } catch (err) {
+      console.error('Submission error:', err);
       setStatus('error');
-      setMessage('Something went wrong. Please try again later.');
+      setMessage('Network error. Please check your connection and try again.');
     }
   };
 
@@ -263,30 +379,39 @@ const Contact = () => {
             
             <div className="space-y-8">
               <div className="flex items-start gap-4">
-                <div className="bg-brand-dark/5 p-4 rounded-2xl text-brand-dark">
+                <div className="bg-secondary/10 p-4 rounded-2xl text-secondary">
                   <Phone size={24} />
                 </div>
                 <div>
                   <h4 className="font-bold text-lg text-brand-dark">Call Us</h4>
-                  <p className="text-brand-dark/70">+44 7700 900000</p>
+                  <p className="text-brand-dark/70">0044 75 47 46 00 88</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
-                <div className="bg-brand-dark/5 p-4 rounded-2xl text-brand-dark">
+                <div className="bg-secondary/10 p-4 rounded-2xl text-secondary">
                   <Mail size={24} />
                 </div>
                 <div>
                   <h4 className="font-bold text-lg text-brand-dark">Email Us</h4>
-                  <p className="text-brand-dark/70">info@nextgenauto.co.uk</p>
+                  <p className="text-brand-dark/70">nextgenautodrivingschool@hotmail.com</p>
                 </div>
               </div>
               <div className="flex items-start gap-4">
-                <div className="bg-brand-dark/5 p-4 rounded-2xl text-brand-dark">
+                <div className="bg-secondary/10 p-4 rounded-2xl text-secondary">
+                  <Globe size={24} />
+                </div>
+                <div>
+                  <h4 className="font-bold text-lg text-brand-dark">Website</h4>
+                  <p className="text-brand-dark/70">nextgenautodrivingschool.co.uk</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-4">
+                <div className="bg-secondary/10 p-4 rounded-2xl text-secondary">
                   <MapPin size={24} />
                 </div>
                 <div>
                   <h4 className="font-bold text-lg text-brand-dark">Location</h4>
-                  <p className="text-brand-dark/70">Serving London and surrounding areas</p>
+                  <p className="text-brand-dark/70">Serving Barking, Dagenham, Ilford, Hornchurch, EastHam, Romford and most of Essex.</p>
                 </div>
               </div>
             </div>
@@ -297,26 +422,26 @@ const Contact = () => {
               <div className="grid md:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-brand-dark/80">Full Name</label>
-                  <input name="name" required type="text" className="w-full px-4 py-3 rounded-xl border border-brand-dark/20 focus:ring-2 focus:ring-brand-dark focus:border-transparent outline-none transition-all" placeholder="John Doe" />
+                  <input name="name" required type="text" className="w-full px-4 py-3 rounded-xl border border-brand-dark/20 focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all" placeholder="John Doe" />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-brand-dark/80">Phone Number</label>
-                  <input name="phone" required type="tel" className="w-full px-4 py-3 rounded-xl border border-brand-dark/20 focus:ring-2 focus:ring-brand-dark focus:border-transparent outline-none transition-all" placeholder="07700 900000" />
+                  <input name="phone" required type="tel" className="w-full px-4 py-3 rounded-xl border border-brand-dark/20 focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all" placeholder="0044 75 47 46 00 88" />
                 </div>
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-brand-dark/80">Email Address</label>
-                <input name="email" required type="email" className="w-full px-4 py-3 rounded-xl border border-brand-dark/20 focus:ring-2 focus:ring-brand-dark focus:border-transparent outline-none transition-all" placeholder="john@example.com" />
+                <input name="email" required type="email" className="w-full px-4 py-3 rounded-xl border border-brand-dark/20 focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all" placeholder="nextgenautodrivingschool@hotmail.com" />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-brand-dark/80">Message</label>
-                <textarea name="message" required rows={4} className="w-full px-4 py-3 rounded-xl border border-brand-dark/20 focus:ring-2 focus:ring-brand-dark focus:border-transparent outline-none transition-all resize-none" placeholder="How can we help you?"></textarea>
+                <textarea name="message" required rows={4} className="w-full px-4 py-3 rounded-xl border border-brand-dark/20 focus:ring-2 focus:ring-secondary focus:border-transparent outline-none transition-all resize-none" placeholder="How can we help you?"></textarea>
               </div>
               
               <button 
                 disabled={status === 'loading'}
                 type="submit" 
-                className="w-full bg-brand-dark text-white py-4 rounded-xl font-bold text-lg hover:bg-brand-dark/90 transition-all disabled:opacity-50"
+                className="w-full bg-secondary text-brand-dark py-4 rounded-xl font-bold text-lg hover:bg-secondary/90 transition-all disabled:opacity-50"
               >
                 {status === 'loading' ? 'Sending...' : 'Send Message'}
               </button>
@@ -367,6 +492,7 @@ export default function App() {
   return (
     <div className="min-h-screen font-sans">
       <Navbar />
+      <FloatingSocials />
       <main>
         <Hero />
         <Services />
